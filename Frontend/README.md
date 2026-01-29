@@ -1,32 +1,60 @@
 # Bottle Quality Inspection System – Frontend
 
-Aquest repositori conté el frontend web del Bottle Quality Inspection System, una aplicació destinada a la visualització i gestió dels resultats d’inspecció de qualitat d’ampolles obtinguts mitjançant models de visió per computador executats al backend.
+Aquest repositori conté el **frontend web** del *Bottle Quality Inspection System*, una aplicació orientada a la **visualització, control i gestió dels resultats d’inspecció de qualitat d’ampolles**.
 
-El frontend actua com a client del backend, consumint la seva API per interactuar amb el sistema d’inspecció i presentar la informació de manera clara i accessible per a l’usuari.
+El frontend actua com a **client del backend**, consumint la seva API per enviar dades d’entrada (imatges) i mostrar els resultats de la inferència de manera clara, estructurada i accessible per a l’usuari.
 
-**Objectiu del frontend**
+## Objectiu del frontend
 
-L’objectiu principal del frontend és proporcionar una interfície web intuïtiva i robusta que permeti:
+L’objectiu principal del frontend és proporcionar una interfície web **intuïtiva i robusta** que permeti:
 
 - Enviar imatges d’ampolles al sistema d’inspecció
+- Visualitzar els resultats d’inferència dels models:
+  - classificació del **nivell de líquid**
+  - detecció de **presència/absència de tap**
+- Mostrar la decisió global de qualitat:
+  - `PASS` (conforme)
+  - `FAIL` (no conforme)
+- Mostrar informació d’estat del sistema (per exemple, si el processament automàtic està actiu)
+- Facilitar el seguiment del procés d’inspecció mitjançant una experiència d’usuari clara i consistent
 
-- Visualitzar els resultats de la inferència dels models (nivell de líquid i presència de tap)
+## Funcionalitats principals
 
-- Consultar la decisió global de qualitat (PASS / FAIL)
+- **Mode interactiu**
+  - pujada manual d’imatges
+  - selecció del tipus d’anàlisi (nivell / tap)
+  - visualització immediata del resultat i confiança
 
-- Mostrar informació d’estat del sistema
+- **Mode automàtic**
+  - visualització de resultats en temps quasi real
+  - recepció d’actualitzacions mitjançant WebSocket
+  - llistat/monitoratge de les ampolles processades i el seu estat
 
-**Tecnologies utilitzades**
+> Nota: el frontend no executa cap model d’IA. Tot el càlcul i inferència es realitza al backend, i el frontend només gestiona la interacció amb l’usuari i la presentació de la informació.
 
-- React – Desenvolupament de la interfície d’usuari
+## Tecnologies utilitzades
 
-- TypeScript – Tipatge estàtic i major seguretat del codi
+- **React**
+  - desenvolupament de la interfície d’usuari basada en components
 
-- Vite – Eina de desenvolupament i build
+- **TypeScript**
+  - tipatge estàtic per millorar mantenibilitat i robustesa del codi
 
-- Tailwind CSS – Estilització basada en utilitats
+- **Vite**
+  - entorn de desenvolupament ràpid i empaquetat per producció
 
-- shadcn/ui – Components d’interfície reutilitzables i accessibles
+- **Tailwind CSS**
+  - estilització basada en utilitats per una UI coherent i eficient
 
+- **shadcn/ui**
+  - components reutilitzables, accessibles i fàcilment personalitzables
 
-El frontend està pensat per ser utilitzat en entorns industrials, laboratoris o contextos d’R+D, facilitant la supervisió del procés d’inspecció.
+## Context d’ús
+
+Aquest frontend està pensat per ser utilitzat en:
+
+- entorns industrials (supervisió i control de qualitat)
+- laboratoris o bancs de prova
+- contextos d’R+D (validació i demostració del sistema)
+
+Facilita la supervisió del procés d’inspecció i la interpretació ràpida dels resultats obtinguts pel sistema.
