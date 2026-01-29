@@ -1,0 +1,111 @@
+@startuml SEQUENCE_AUTOMATIC_WATCHER_PROCESSING
+!theme plain
+
+title Mode automàtic: polling blobs -> processament ampolla -> resultats WS -> PDF (si FAIL)
+
+autonumber
+
+participant "FastAPI\n(main.py)" as API
+participant "Watcher\n(blob_watcher.py)" as W
+participant "Blob client\n(blob_client.py)" as BC
+participant "Processor\n(processor.py)" as P
+participant "Azure client\n(azure_client.py)" as AZC
+participant "Azure ML\n(TAP)" as AZT
+participant "Azure ML\n(LEVEL)" as AZL
+participant "WebSocket manager\n(websocket_manager.py)" as WSM
+participant "PDF generator\n(pdf_generator.py)" as PDFG
+
+actor "Clients WS" as WSCLIENT
+
+== Arrencada ==
+API -> W: create_task(watch_containers(is_system_running, system_running_event))
+
+== Bucle de polling (només si system_running=True) ==
+loop cada poll_interval
+  W -> BC: list_blobs(CONTAINER_TAP)
+  BC --> W: tap_blobs
+  W -> BC: list_blobs(CONTAINER_LEVEL)
+  BC --> W: level_blobs
+
+  W -> W: map bottle_id -> tap_blob / level_blob
+  W -> W: complete_bottles = intersection(TAP, LEVEL)
+
+  loop per bottle_id (seqüencial)
+    alt ja processat (tap_id i level_id)
+      W -> W: continue
+    else ampolla nova
+      W -> W: processed_blobs.add(tap_id)
+      W -> W: processed_blobs.add(level_id)
+
+      W -> P: await process_bottle_from_blobs(bottle_id, tap_blob, level_blob)
+      activate P
+
+      == Descàrrega (implementació: paral·lel via executor + gather) ==
+      note over P
+        TAP i LEVEL es descarreguen en paral·lel
+        (run_in_executor + asyncio.gather).
+        Es dibuixa seqüencial per compatibilitat PlantUML.
+      end note
+
+      P -> BC: read_image_bytes(CONTAINER_TAP, tap_blob)
+      BC --> P: tap_bytes
+      P -> BC: read_image_bytes(CONTAINER_LEVEL, level_blob)
+      BC --> P: level_bytes
+
+      P -> P: pair = BottlePair(tap_bytes, level_bytes, tap_blob_name, level_blob_name)
+
+      == Inferència (implementació: paral·lel via executor + wait_for) ==
+      note over P
+        TAP i LEVEL es processen en paral·lel
+        (run_in_executor + asyncio.gather + asyncio.wait_for)
+        amb timeout global AZURE_PREDICT_TIMEOUT_S.
+        Es dibuixa seqüencial per compatibilitat PlantUML.
+      end note
+
+      P -> AZC: predict_tap_from_bytes_azure(tap_bytes)
+      AZC -> AZT: HTTP POST /score (image_hex)
+      AZT --> AZC: class + confidence
+
+      P -> AZC: predict_level_from_bytes_azure(level_bytes)
+      AZC -> AZL: HTTP POST /score (image_hex)
+      AZL --> AZC: class + confidence
+
+      alt Timeout (AZURE_PREDICT_TIMEOUT_S)
+        P -> P: tap_label=tap_timeout; level_label=level_timeout
+      else OK
+        P -> P: tap_label/tap_conf; level_label/level_conf
+      end
+
+      P -> P: status = PASS si tap_present i ok; altrament FAIL
+      P -> P: bottle_counter += 1
+
+      == Publicació en temps real ==
+      P -> WSM: broadcast(analysis_result, final_result)
+      activate WSM
+      WSM -> WSCLIENT: send_json(final_result)
+      deactivate WSM
+
+      alt status == FAIL
+        == Evidència PDF ==
+        P -> PDFG: generate_error_pdf(...)
+        activate PDFG
+        PDFG --> P: pdf_buffer
+        deactivate PDFG
+
+        P -> BC: upload_pdf(filename, pdf_bytes)
+        BC --> P: OK
+      end
+
+      P -> P: cleanup barrier (del bottles[bottle_id])
+      deactivate P
+    end
+  end
+end
+
+== Cancel·lació ==
+alt Sistema OFF o shutdown
+  API -> W: watcher_task.cancel()
+  W -> W: captura CancelledError i surt
+end
+
+@enduml

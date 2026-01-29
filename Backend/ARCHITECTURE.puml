@@ -1,0 +1,87 @@
+@startuml ARCHITECTURE
+!theme plain
+
+title Sistema d'Inspecció d'Ampolles en Temps Real (Arquitectura)
+
+skinparam linetype ortho
+left to right direction
+skinparam nodesep 35
+skinparam ranksep 45
+skinparam packageStyle rectangle
+
+' Llegenda: temps real (—) | offline (..)
+legend left
+    Temps real: —
+    Offline: ..
+endlegend
+
+package "📷 Font d'Imatges" {
+    [Càmera / Simulador\n(uploader)] as SOURCE
+}
+
+package "🖥️ Frontend" {
+    [UI Operador\n(React)] as FRONT
+}
+
+package "🔧 Backend" {
+    [FastAPI\nAPI + WebSocket] as BACK
+}
+
+package "☁️ Azure Blob Storage" {
+    [images-tap] as BLOB_TAP
+    [images-level] as BLOB_LEVEL
+    [errors-pdf] as BLOB_ERRORS
+}
+
+package "🤖 Azure ML (Inferència)" {
+    [CNN TAP\n(endpoint)] as ML_TAP
+    [CNN NIVELL\n(endpoint)] as ML_LEVEL
+}
+
+' --- Fluxos de dades ---
+
+' MODE AUTOMÀTIC (via Blob)
+SOURCE --> BLOB_TAP : "Upload TAP (+id, ts)"
+SOURCE --> BLOB_LEVEL : "Upload NIVELL (+id, ts)"
+
+' MODE INTERACTIU (usuari puja imatge)
+FRONT --> BACK : "HTTP: analitzar imatge"
+
+' Control d'estat (habilita/deshabilita mode automàtic)
+FRONT --> BACK : "HTTP: ON/OFF"
+
+' Flux temps real: detecció, inferència, decisió i notificació
+BACK --> BLOB_TAP : "Blob: lectura (automàtic)"
+BACK --> BLOB_LEVEL : "Blob: lectura (automàtic)"
+BACK --> ML_TAP : "HTTP: inferència"
+BACK --> ML_LEVEL : "HTTP: inferència"
+BACK --> FRONT : "WebSocket: resultats"
+
+' 4) Flux offline/segon pla: persistència d'errors i evidències
+BACK ..> BLOB_ERRORS : "PDF/evidència (NO OK)"
+
+' --- Notes curtes (1 línia) ---
+
+note right of FRONT
+    UI: visualitza i activa/desactiva
+end note
+
+note right of BACK
+    Backend: orquestra + decideix OK/NO OK
+end note
+
+note left of BACK
+    2 modes
+    - Interactiu: HTTP analitzar imatge
+    - Automàtic: llegeix Blob quan està ON
+end note
+
+note right of ML_LEVEL
+    IA: inferència (temps real)
+end note
+
+note bottom of BLOB_ERRORS
+    Blob: només persistim errors/evidències
+end note
+
+@enduml

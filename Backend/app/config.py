@@ -1,0 +1,9 @@
+import os
+
+AZURE_STORAGE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+
+CONTAINER_TAP = "images-tap"
+CONTAINER_LEVEL = "images-level"
+CONTAINER_ERRORS = "errors-pdf"
+
+SYSTEM_POLL_INTERVAL = 0.3 # segons

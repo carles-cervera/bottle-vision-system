@@ -1,0 +1,33 @@
+@startuml SEQUENCE_UPLOAD_ERROR_PDF
+!theme plain
+
+title Ingesta de PDF extern: POST /upload-error-pdf
+
+autonumber
+
+actor "Client extern\n(front / eina)" as C
+participant "FastAPI Router\n(pdf_receiver.py)" as PDFR
+participant "Blob client\n(blob_client.py)" as BC
+participant "Azure Blob Storage\n(CONTAINER_ERRORS)" as ABS
+
+C -> PDFR: POST /upload-error-pdf\nfile=<UploadFile> (multipart/form-data)
+activate PDFR
+
+PDFR -> PDFR: pdf_bytes = await file.read()
+PDFR -> BC: upload_pdf(file.filename, pdf_bytes)
+activate BC
+BC -> ABS: upload_blob(container=errors-pdf,\nblob=file.filename, overwrite=True)
+ABS --> BC: OK
+BC --> PDFR: OK
+
+deactivate BC
+PDFR --> C: 200 OK\n{status:"stored"}
+
+deactivate PDFR
+
+note right of BC
+  upload_pdf(...) està fixat a CONTAINER_ERRORS
+  (no rep el container per paràmetre).
+end note
+
+@enduml

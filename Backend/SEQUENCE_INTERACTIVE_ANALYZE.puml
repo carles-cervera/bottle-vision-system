@@ -1,0 +1,48 @@
+@startuml SEQUENCE_INTERACTIVE_ANALYZE
+!theme plain
+
+title Mode interactiu: /api/analyze/tap i /api/analyze/level
+
+autonumber
+
+actor "Front-end" as FE
+participant "FastAPI\n(main.py)" as API
+participant "Azure client\n(azure_client.py)" as AZC
+participant "Azure ML Endpoint\n(TAP o LEVEL)" as AZML
+
+== Request HTTP (multipart/form-data) ==
+FE -> API: POST /api/analyze/{tap|level}\nfile=<UploadFile>
+activate API
+
+API -> API: image_bytes = await file.read()
+
+alt Ruta TAP
+  API -> AZC: predict_tap_from_bytes_azure(image_bytes)
+else Ruta LEVEL
+  API -> AZC: predict_level_from_bytes_azure(image_bytes)
+end
+activate AZC
+
+AZC -> AZC: payload = { image: hex(image_bytes) }
+AZC -> AZC: headers = { Authorization: Bearer $AZURE_ML_KEY_* }
+
+AZC -> AZML: HTTP POST /score\nJSON(payload)
+activate AZML
+AZML --> AZC: 200 OK\n{class, confidence}
+deactivate AZML
+
+AZC -> AZC: normalitza resposta -> (label, confidence)
+AZC --> API: (label, confidence)
+deactivate AZC
+
+API --> FE: 200 OK\n{ label: str, confidence: float }
+deactivate API
+
+== Gestió d'errors ==
+alt Error Azure (requests.raise_for_status) o parsing
+  AZML --> AZC: 4xx/5xx o JSON inesperat
+  AZC -> AZC: llença excepció
+  API --> FE: 500 Internal Server Error\nHTTPException(detail=str(e))
+end
+
+@enduml
