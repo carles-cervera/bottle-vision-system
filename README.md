@@ -104,14 +104,14 @@ Els endpoints del backend reben imatges com a `multipart/form-data` (camp princi
   "label": "<etiqueta_predita>",
   "confidence": 0.93
 }
-
+```
 Internament, el backend envia la imatge als endpoints d’Azure ML codificada en hexadecimal dins d’un JSON:
 
 ```json
 {
   "image": "<cadena_hexadecimal>"
 }
-
+```
 ### Control del mode automàtic
 
 El backend permet iniciar i aturar el processament continu sense parar el servidor:
