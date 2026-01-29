@@ -1,227 +1,180 @@
-Sistema d’inspecció visual d’ampolles (IA + Azure)
+# Sistema d’inspecció visual d’ampolles (IA + Azure)
 
-Aquest repositori conté un prototip funcional d’un sistema d’inspecció visual automàtica d’ampolles, orientat a entorns industrials, basat en visió per computador i serveis al núvol de Microsoft Azure.
+Aquest repositori conté el desenvolupament d’un **sistema complet d’inspecció visual per a ampolles**, basat en **visió per computador** i **serveis al núvol**. El sistema automatitza el control de qualitat a partir d’imatges i permet detectar defectes relacionats amb:
 
-El sistema analitza ampolles a partir d’imatges per detectar:
+- **Nivell d’emplenat del líquid** (`low`, `ok`, `full`)
+- **Presència o absència de tap** (`present`, `missing`)
 
-Nivell d’emplenat del líquid (classificació: low, ok, full)
+El projecte integra infraestructura cloud d’Azure, models d’IA desplegats com a serveis REST i una interfície web per operar en mode manual o en mode de monitoratge continu.
 
-Presència de tap (detecció: present / missing)
+## Objectiu del projecte
 
-L’objectiu és automatitzar el control de qualitat, reduir errors humans i generar evidències quan es detecten no conformitats. 
+L’objectiu és demostrar la viabilitat d’una arquitectura modular que permeti:
 
-Memoria-carles.cervera
+- automatitzar la inspecció visual de botelles
+- reduir errors humans i millorar la traçabilitat
+- oferir resultats en temps quasi real
+- generar evidències (PDF) en casos de no conformitat
+- facilitar la substitució o reentrenament de models sense afectar la resta del sistema
 
- 
+## Funcionalitats
 
-Memoria-carles.cervera
+### 1) Mode interactiu (manual)
+Mode pensat per a validació, proves i demostració del sistema.
 
-Funcionalitats principals
-✅ Mode interactiu (manual)
+Flux de funcionament:
+1. L’usuari carrega una imatge d’una ampolla des de la interfície web.
+2. Selecciona el tipus d’anàlisi:
+   - classificació de nivell
+   - detecció de tap
+3. El frontend envia la imatge al backend mitjançant una crida HTTP.
+4. El backend valida la imatge i delega la inferència a Azure Machine Learning.
+5. El resultat (etiqueta i confiança) es retorna immediatament al frontend.
 
-Pensat per a proves, validació i demostració del sistema:
+Aquest mode permet provar els models sense dependre del watcher de Blob Storage i sense necessitat de simular una línia industrial.
 
-L’usuari puja una imatge des de la interfície web
+### 2) Mode automàtic (monitoratge continu)
+Mode dissenyat per simular una línia industrial real amb processament continu.
 
-Selecciona el tipus d’anàlisi:
+Flux de funcionament:
+1. Les imatges arriben de forma contínua a **Azure Blob Storage**.
+2. El backend executa un procés de monitoratge en segon pla que detecta nous blobs.
+3. Cada ampolla es representa amb dues imatges independents:
+   - imatge de **nivell**
+   - imatge de **tap**
+4. El backend agrupa les dues imatges mitjançant un identificador d’ampolla (`bottle_id`) inferit del nom del fitxer.
+5. Quan el parell està complet, el backend descarrega les imatges i invoca els endpoints d’Azure ML.
+6. El backend determina si l’ampolla és conforme o defectuosa segons els criteris de nivell i tap.
+7. El resultat es publica al frontend en temps quasi real mitjançant **WebSocket**.
+8. Si es detecta defecte, es genera un **PDF d’evidència** i es desa en un contenidor específic de Blob Storage per a anàlisi posterior.
 
-classificació del nivell
+Aquest mode permet monitoratge continu sense intervenció manual.
 
-detecció de tap
+## Arquitectura del sistema
 
-El backend fa una petició a l’endpoint del model corresponent a Azure Machine Learning
+L’arquitectura s’ha dissenyat per separar clarament presentació, orquestració i inferència. El sistema es divideix en quatre blocs principals:
 
-El resultat es retorna immediatament al frontend via HTTP
+1. **Frontend web**
+   - interfície d’usuari
+   - enviament d’imatges en mode interactiu
+   - control d’estat del sistema (on/off)
+   - visualització de resultats en temps real via WebSocket en mode automàtic
 
-Aquest mode és útil quan no hi ha un flux industrial real de càmeres o quan es vol provar el rendiment dels models amb imatges concretes. 
+2. **Backend**
+   - implementat amb **FastAPI**
+   - capa central de lògica d’aplicació
+   - orquestració del flux interactiu i automàtic
+   - integració amb Azure Machine Learning i Azure Blob Storage
+   - ús intensiu de concurrència asíncrona i execució en fils per evitar bloquejos
 
-Memoria-carles.cervera
+3. **Plataforma d’inferència**
+   - **Azure Machine Learning**
+   - models desplegats com **endpoints REST**
 
- 
+4. **Plataforma de dades**
+   - **Azure Blob Storage**
+   - emmagatzematge d’imatges de producció
+   - emmagatzematge d’informes PDF d’evidència
 
-Memoria-carles.cervera
+Aquesta arquitectura modular facilita el manteniment i permet substituir models sense canviar les interfícies del backend ni el client web.
 
-⚙️ Mode automàtic (monitoratge continu)
+## Models d’IA
 
-Mode pensat per simular una línia industrial:
+S’ha seleccionat una solució basada en **dues xarxes neuronals convolucionals independents**, cadascuna especialitzada en una tasca:
 
-Les imatges arriben contínuament a Azure Blob Storage
+- **Model de nivell**
+  - classificació del nivell d’emplenat (`low`, `ok`, `full`)
+  - treballa amb imatges frontals on es veu clarament el coll de l’ampolla
 
-El backend detecta automàticament nous blobs (watcher en segon pla)
+- **Model de tap**
+  - detecció de presència o absència de tap (`present`, `missing`)
+  - treballa sobre la part superior de l’ampolla
 
-Cada ampolla es representa amb dues imatges:
+Els models utilitzen **transfer learning** a partir d’arquitectures preentrenades (ResNet18) adaptant les capes finals a les classes del projecte.
 
-una per al nivell
+Separar les tasques en dos models simplifica l’entrenament, facilita el desplegament independent i permet millores futures sense impactar l’altre model.
 
-una per al tap
+## Backend: API i contractes
 
-El backend sincronitza ambdues imatges (mateix bottle_id) i llança la inferència quan el parell està complet
+### Mode interactiu
+Els endpoints del backend reben imatges com a `multipart/form-data` (camp principal `file`) i retornen un JSON simplificat i estable:
 
-Els resultats es publiquen al frontend en temps quasi real mitjançant WebSockets
-
-Si hi ha defecte, el sistema genera un PDF d’evidència i el desa a Blob Storage
-
-Aquest mode permet operar de manera contínua sense intervenció manual. 
-
-Memoria-carles.cervera
-
- 
-
-Memoria-carles.cervera
-
- 
-
-Memoria-carles.cervera
-
-Arquitectura del sistema
-
-El sistema es divideix en 4 blocs principals:
-
-Frontend web
-
-React + TypeScript
-
-Tailwind CSS
-
-shadcn/ui
-
-Vite
-
-Dues vistes: interactiva i automàtica
-
-Backend
-
-FastAPI
-
-Concurrència asíncrona
-
-Integració amb Azure ML i Blob Storage
-
-Publicació de resultats via WebSocket
-
-Azure Machine Learning
-
-Models desplegats com a endpoints REST
-
-Un endpoint per al model de nivell i un altre per al model de tap
-
-Azure Blob Storage
-
-Contenidors per imatges de nivell i tap
-
-Contenidor per informes PDF d’evidència
-
-Aquesta separació modular permet reentrenar o substituir models sense afectar el frontend ni el backend. 
-
-Memoria-carles.cervera
-
- 
-
-Memoria-carles.cervera
-
- 
-
-Memoria-carles.cervera
-
-Models d’IA
-
-S’ha optat per una arquitectura amb dos models independents (en lloc d’un únic model multi-sortida):
-
-Model de nivell
-
-Classificació del nivell d’emplenat: low, ok, full
-
-Model de tap
-
-Detecció de tap: present, missing
-
-Tots dos models es basen en transfer learning amb una arquitectura preentrenada (ResNet18) adaptada a les classes del projecte.
-
-Aquesta separació simplifica l’entrenament, la comparació de resultats i el desplegament modular. 
-
-Memoria-carles.cervera
-
- 
-
-Memoria-carles.cervera
-
-Contracte d’API (resum)
-Mode interactiu
-
-Els endpoints reben imatges com a multipart/form-data i retornen un JSON simplificat:
-
-Resposta:
-
+```json
 {
   "label": "<etiqueta_predita>",
   "confidence": 0.93
 }
 
+Internament, el backend envia la imatge als endpoints d’Azure ML codificada en hexadecimal dins d’un JSON:
 
-El backend encapsula l’accés als endpoints d’Azure ML i retorna una interfície estable al frontend. 
+```json
+{
+  "image": "<cadena_hexadecimal>"
+}
 
-Memoria-carles.cervera
+### Control del mode automàtic
 
-Control del mode automàtic
+El backend permet iniciar i aturar el processament continu sense parar el servidor:
 
-El backend exposa endpoints per activar/desactivar el watcher:
+- `POST /system/on`
+  - activa el watcher i reinicia la tasca asíncrona
 
-POST /system/on → inicia el processament automàtic
+- `POST /system/off`
+  - atura el watcher i suspèn el processament
 
-POST /system/off → atura el processament automàtic
 
-Memoria-carles.cervera
+## Gestió d’estat en mode automàtic
 
-Estructures internes rellevants (mode automàtic)
+Com que les imatges de tap i nivell poden arribar en qualsevol ordre, el backend manté estat en memòria per sincronitzar-les:
 
-Per assegurar que cada ampolla es processa només quan hi ha les dues imatges (tap i nivell), el backend utilitza:
+- `BottlePair` (`dataclass`)
+  - agrupa bytes i metadades de les dues imatges (tap i nivell)
+  - inclou un `timestamp` quan el parell queda complet
 
-BottlePair (dataclass): agrupa bytes i metadades de tap+nivell
+- `bottles: dict[str, BottlePair]`
+  - actua com una “barrera” per esperar fins que hi hagi el parell complet
 
-bottles: dict[str, BottlePair]: barrera en memòria per sincronitzar arribades
+- `processed_blobs: Set[str]`
+  - evita reprocessar blobs ja tractats (estratègia “mark before work”)
 
-processed_blobs: Set[str]: evita reprocessaments
+- `bottle_counter`
+  - comptador global d’ampolles processades, utilitzat per informar el frontend
 
-bottle_counter: comptador global d’ampolles processades
+Aquest estat és volàtil i es perd en reiniciar el servei, ja que el sistema està concebut com un prototip de demostració.
 
-Aquest estat és volàtil i es perd en reiniciar el servei (prototip). 
 
-Memoria-carles.cervera
+## Frontend
 
- 
+El frontend és una aplicació web desenvolupada amb:
 
-Memoria-carles.cervera
+- React + TypeScript
+- Tailwind CSS
+- shadcn/ui
+- Vite
 
-Tecnologies utilitzades
+No realitza càlcul d’IA: només gestiona interacció d’usuari, enviament de dades i visualització de resultats.
 
-Backend: FastAPI (Python)
+Inclou dues vistes principals:
 
-Frontend: React + TypeScript + Tailwind + shadcn/ui + Vite
+- vista d’anàlisi interactiva (manual)
+- vista de monitoratge automàtic en temps real (WebSocket)
 
-Inferència IA: Azure Machine Learning (endpoints REST)
 
-Dades: Azure Blob Storage
+## Tecnologies utilitzades
 
-Temps real: WebSockets
+- Backend: FastAPI (Python)
+- Concurrència: asyncio + ThreadPoolExecutor
+- Frontend: React + TypeScript + Tailwind CSS + shadcn/ui + Vite
+- Temps real: WebSocket
+- IA: CNN amb transfer learning (ResNet18)
+- Inferència: Azure Machine Learning (endpoints REST)
+- Dades: Azure Blob Storage
+- Evidències: generació de PDF d’errors / no conformitats
 
-Models: CNN amb transfer learning (ResNet18)
 
-Memoria-carles.cervera
+## Estat del projecte
 
- 
+Aquest repositori correspon a un prototip funcional, validat en entorn de laboratori, que demostra que una arquitectura basada en serveis gestionats al núvol i un backend lleuger pot donar suport a un sistema d’inspecció visual modular, extensible i mantenible.
 
-Memoria-carles.cervera
+No és un sistema industrial definitiu, però està dissenyat per facilitar futures ampliacions (persistència, escalabilitat, integració amb càmeres reals, etc.).
 
-Resultat del sistema
-
-El projecte demostra la viabilitat d’un sistema modular capaç de:
-
-Processar imatges automàticament a partir de blobs entrants
-
-Publicar resultats en temps quasi real
-
-Gestionar errors típics (blobs incomplets, timeouts, etc.)
-
-Generar evidències en forma de PDF per a no conformitats
-
-Tot plegat orientat a un prototip de demostració i no a un sistema industrial final.
